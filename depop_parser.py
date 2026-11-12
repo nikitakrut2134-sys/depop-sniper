@@ -11,7 +11,7 @@ def convert_to_rub(usd_price: float) -> int:
     return math.ceil(rub_exact)
 
 async def fetch_depop_new_listings(session: AsyncSession, query: str) -> List[Dict[str, Any]]:
-    """Парсит товары через мобильный эндпоинт Depop с обходом защиты хостинга."""
+    """Парсит товары черезэмуляцию поискового бота Googlebot для обхода блокировок дата-центров."""
     url = "https://webapi.depop.com/api/v1/search/products/"
     
     params = {
@@ -20,23 +20,21 @@ async def fetch_depop_new_listings(session: AsyncSession, query: str) -> List[Di
         "limit": 20
     }
 
-    # Заголовки мобильного приложения, которые реже триггерят Cloudflare на дата-центрах
+    # Маскируемся под поискового робота Googlebot, чтобы Cloudflare пропускал запросы без проверки
     headers = {
-        "User-Agent": "Depop/1.107.0 (iPhone; iOS 16.6; Scale/3.00)",
+        "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "X-Depop-Client": "ios",
-        "Origin": "https://www.depop.com",
-        "Referer": "https://www.depop.com/"
+        "X-Forwarded-For": "8.8.8.8",
+        "Referer": "https://www.google.com/"
     }
 
     try:
-        # Используем эмуляцию TLS-отпечатка Safari под iOS
         response = await session.get(
             url, 
             params=params, 
             headers=headers, 
-            impersonate="safari15_3", 
+            impersonate="chrome120", 
             timeout=25
         )
         
