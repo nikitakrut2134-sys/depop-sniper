@@ -6,12 +6,12 @@ from curl_cffi.requests import AsyncSession
 from config import USD_TO_RUB_RATE, ADDITIONAL_RUB, STOP_WORDS
 
 def convert_to_rub(usd_price: float) -> int:
+    """Пересчитывает долларовую цену в рубли."""
     rub_exact = (usd_price * USD_TO_RUB_RATE) + ADDITIONAL_RUB
     return math.ceil(rub_exact)
 
 async def fetch_depop_new_listings(session: AsyncSession, query: str) -> List[Dict[str, Any]]:
-    """Парсим через мобильный GraphQL/API эндпоинт Depop."""
-    # Используем мобильный эндпоинт, который меньше защищен Cloudflare, чем веб-поиск
+    """Парсит товары через мобильный эндпоинт Depop с обходом защиты хостинга."""
     url = "https://webapi.depop.com/api/v1/search/products/"
     
     params = {
@@ -20,21 +20,24 @@ async def fetch_depop_new_listings(session: AsyncSession, query: str) -> List[Di
         "limit": 20
     }
 
-    # Маскируемся под официальное приложение для iOS
+    # Заголовки мобильного приложения, которые реже триггерят Cloudflare на дата-центрах
     headers = {
-        "User-Agent": "Depop/1.107.0 (iOS; 16.6; Scale/3.00)",
-        "Accept": "application/json",
-        "Accept-Language": "en-US;q=1.0",
+        "User-Agent": "Depop/1.107.0 (iPhone; iOS 16.6; Scale/3.00)",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
         "X-Depop-Client": "ios",
+        "Origin": "https://www.depop.com",
+        "Referer": "https://www.depop.com/"
     }
 
     try:
+        # Используем эмуляцию TLS-отпечатка Safari под iOS
         response = await session.get(
             url, 
             params=params, 
             headers=headers, 
             impersonate="safari15_3", 
-            timeout=20
+            timeout=25
         )
         
         if response.status_code == 200:
@@ -49,6 +52,7 @@ async def fetch_depop_new_listings(session: AsyncSession, query: str) -> List[Di
         return []
 
 def filter_and_format_item(item: Dict[str, Any], target_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Фильтрует и форматирует лот."""
     description = item.get("description", "").lower()
     if any(sw in description for sw in STOP_WORDS):
         return None
@@ -74,6 +78,9 @@ def filter_and_format_item(item: Dict[str, Any], target_config: Dict[str, Any]) 
     if not slug:
         return None
     
+    pictures = item.get("pictures", [])
+    photo_url = pictures[0][0].get("url") if pictures and pictures[0] else None
+
     return {
         "id": item.get("id"),
         "title": slug.replace("-", " ").title(),
@@ -84,6 +91,6 @@ def filter_and_format_item(item: Dict[str, Any], target_config: Dict[str, Any]) 
         "category": target_config.get("category", "разное"),
         "query": target_config.get("query"),
         "url": f"https://www.depop.com/products/{slug}/",
-        "photo_url": item.get("pictures", [[{}]])[0][0].get("url"),
+        "photo_url": photo_url,
         "description": item.get("description", "Без описания.")[:150]
     }
